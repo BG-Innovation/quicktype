@@ -46,53 +46,46 @@ interface DiscoveredField {
 }
 
 async function main() {
-    console.log('QuickBase Type Builder - Generating JSON Schema + TypeScript Types');
-    await discoverAndGenerateTypes();
+    const command = process.argv[2];
+
+    if (command === 'generate:types' || process.env.npm_lifecycle_event === 'generate') {
+        console.log('QuickBase Type Builder - Generating JSON Schema + TypeScript Types');
+        await discoverAndGenerateTypes();
+    } else if (!command) {
+        // If no command is provided (e.g., just `npx quicktype`), run generate by default
+        console.log('QuickBase Type Builder - Generating JSON Schema + TypeScript Types');
+        await discoverAndGenerateTypes();
+    } else {
+        console.log(`Unknown command: ${command}`);
+        console.log('Available commands: generate:types');
+        process.exit(1);
+    }
 }
 
-/**
- * Main function to discover and generate types
- * Can be called from consuming projects
- */
-export async function buildTypes(configPath?: string): Promise<void> {
+async function discoverAndGenerateTypes(): Promise<void> {
     try {
-        const resolvedConfigPath = configPath || path.join(process.cwd(), 'quickbase.config.ts');
-        const configExists = await fs.access(resolvedConfigPath).then(() => true).catch(() => false);
+        const configPath = path.join(process.cwd(), 'quickbase.config.ts');
+        const configExists = await fs.access(configPath).then(() => true).catch(() => false);
         
         if (!configExists) {
-            throw new Error(`Config file not found at ${resolvedConfigPath}. Please create quickbase.config.ts with your app configurations.`);
+            throw new Error(`Config file not found at ${configPath}. Please create quickbase.config.ts with your app configurations.`);
         }
 
-        // Load the TypeScript config
-        let configModule;
-        try {
-            // Try different ways to load the config
-            if (resolvedConfigPath.endsWith('.ts')) {
-                // For TypeScript configs, try ts-node first
-                try {
-                    require('ts-node').register({
-                        transpileOnly: true,
-                        compilerOptions: {
-                            module: 'commonjs'
-                        }
-                    });
-                } catch {
-                    // ts-node not available, that's ok
-                }
+        // Temporarily use ts-node to load the TypeScript config without a full build
+        require('ts-node').register({
+            transpileOnly: true,
+            compilerOptions: {
+                module: 'commonjs'
             }
-            
-            configModule = require(resolvedConfigPath);
-        } catch (error) {
-            // Fallback: try importing as ES module or suggest alternatives
-            throw new Error(`Failed to load config from ${resolvedConfigPath}. Ensure it exports a default QuickBaseConfig. Error: ${error}`);
-        }
+        });
 
+        const configModule = require(configPath);
         const appsConfig: QuickBaseConfig = configModule.default || configModule;
         
         console.log(`Found ${appsConfig.apps.length} apps in config file`);
         
-        const typesDir = path.join(process.cwd(), 'types', 'generated');
-        await fs.mkdir(typesDir, { recursive: true });
+        // Create types in current working directory (consumer's codebase)
+        const typesOutputPath = path.join(process.cwd(), 'quickbase-types.ts');
         
         let successCount = 0;
         let failureCount = 0;
@@ -103,8 +96,7 @@ export async function buildTypes(configPath?: string): Promise<void> {
             try {
                 const discoveredApp = await discoverApp(app, appsConfig);
                 discoveredApps.push(discoveredApp);
-                await generateTypesForApp(discoveredApp, typesDir);
-                console.log(`✓ Successfully generated types for ${app.name}`);
+                console.log(`✓ Successfully discovered ${app.name}`);
                 successCount++;
             } catch (error) {
                 console.error(`✗ Failed to process ${app.name}:`, error instanceof Error ? error.message : error);
@@ -112,15 +104,10 @@ export async function buildTypes(configPath?: string): Promise<void> {
             }
         }
         
-        // Generate index file
-        const appNames = appsConfig.apps.map(app => app.name);
-        await generateTypesIndex(typesDir, appNames);
-        
-        // Generate client mappings
-        await generateClientMappings(typesDir, discoveredApps);
-        
-        // Generate type augmentation template
-        await generateTypeAugmentationTemplate(typesDir);
+        if (discoveredApps.length > 0) {
+            // Generate unified types file with mappings and module declaration
+            await generateUnifiedTypesWithMappings(discoveredApps, typesOutputPath);
+        }
         
         console.log(`\n--- Summary ---`);
         console.log(`Successful: ${successCount}`);
@@ -128,24 +115,191 @@ export async function buildTypes(configPath?: string): Promise<void> {
         console.log(`Total: ${appsConfig.apps.length}`);
         
         if (failureCount > 0) {
-            throw new Error(`Type generation failed for ${failureCount} apps`);
+            process.exit(1);
         }
         
         console.log('\n🎉 Type generation complete!');
-        console.log('\n📝 Next steps:');
-        console.log('1. Import the type augmentation in your project:');
-        console.log('   import "./types/generated/augment-quicktypes"');
-        console.log('2. Use the QuickBase client with full type safety!');
-        
+        console.log(`Generated file:`);
+        console.log(`  - ${typesOutputPath}`);
     } catch (error) {
         console.error('Type generation failed:', error instanceof Error ? error.message : error);
-        throw error;
+        process.exit(1);
     }
 }
 
-// Legacy function name for backward compatibility
-export const discoverAndGenerateTypes = buildTypes;
+async function generateUnifiedTypesWithMappings(discoveredApps: DiscoveredApp[], outputPath: string) {
+    console.log('Generating unified TypeScript types with mappings and module declaration...');
+    
+    // Generate individual app interfaces
+    const appInterfaces: string[] = [];
+    const tableInterfaces: string[] = [];
+    
+    for (const app of discoveredApps) {
+        // Generate app interface
+        const appSchema = generateAppSchema(app);
+        const appInterface = await compile(appSchema as any, `${app.name}App`, {
+            bannerComment: `// App: ${app.displayName} (${app.appId})`,
+            style: {
+                semi: true,
+                singleQuote: false,
+                tabWidth: 2,
+                printWidth: 100
+            }
+        });
+        appInterfaces.push(appInterface);
+        
+        // Generate table interfaces
+        for (const [tableName, table] of Object.entries(app.tables)) {
+            const tableSchema = generateTableSchema(table);
+            const tableInterface = await compile(tableSchema as any, `${app.name}${pascalCase(tableName)}Table`, {
+                bannerComment: `// Table: ${table.displayName} (${table.tableId})`,
+                style: {
+                    semi: true,
+                    singleQuote: false,
+                    tabWidth: 2,
+                    printWidth: 100
+                }
+            });
+            tableInterfaces.push(tableInterface);
+        }
+    }
+    
+    // Build data types for each table
+    const dataTypes = discoveredApps.flatMap(app => 
+        Object.entries(app.tables).map(([tableName, table]) => {
+            const fields = Object.entries(table.fields).map(([fieldName, field]) => {
+                let fieldType = 'string';
+                if (field.type === 'number') fieldType = 'number';
+                if (field.type === 'checkbox') fieldType = 'boolean';
+                if (field.choices && field.choices.length > 0) {
+                    fieldType = field.choices.map(c => `'${c.replace(/'/g, "\\'")}'`).join(' | ');
+                }
+                return `  ${fieldName}?: ${fieldType};`;
+            }).join('\n');
+            return `export interface ${app.name}${pascalCase(tableName)}Data {\n  id?: number | string;\n${fields}\n}`;
+        })
+    );
+    
+    // Build mappings
+    const tableMappings: Record<string, Record<string, string>> = {};
+    const fieldMappings: Record<string, Record<string, Record<string, number>>> = {};
+    
+    for (const app of discoveredApps) {
+        const appName = app.name;
+        tableMappings[appName] = {};
+        fieldMappings[appName] = {};
+        for (const [tableName, table] of Object.entries(app.tables)) {
+            tableMappings[appName][tableName] = table.tableId;
+            fieldMappings[appName][tableName] = {};
+            for (const [fieldName, field] of Object.entries(table.fields)) {
+                fieldMappings[appName][tableName][fieldName] = field.fieldId;
+            }
+        }
+    }
+    
+    // Create the main config interface
+    const appsConfig = discoveredApps.map(app => `  ${app.name}: ${app.name}App;`).join('\n');
+    const tablesConfig = discoveredApps.map(app => {
+        const tables = Object.keys(app.tables).map(tableName => `    ${tableName}: ${app.name}${pascalCase(tableName)}Table;`).join('\n');
+        return `  ${app.name}: {\n${tables}\n  };`;
+    }).join('\n');
+    const tableDataConfig = discoveredApps.map(app => {
+        const tables = Object.keys(app.tables).map(tableName => `    ${tableName}: ${app.name}${pascalCase(tableName)}Data;`).join('\n');
+        return `  ${app.name}: {\n${tables}\n  };`;
+    }).join('\n');
+    
+    // Check if we're in the quicktype package itself by looking for our package.json
+    const packageJsonPath = path.join(process.cwd(), 'package.json');
+    let isQuicktypePackage = false;
+    
+    try {
+        const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
+        isQuicktypePackage = packageJson.name === 'quicktype';
+    } catch {
+        // If we can't read package.json, assume we're in a consuming codebase
+        isQuicktypePackage = false;
+    }
+    
+    const moduleDeclaration = isQuicktypePackage 
+        ? '// Module declaration omitted when running in the quicktype package itself'
+        : `// Module declaration to extend QuickBase's GeneratedTypes
+declare module 'quicktype' {
+  export interface GeneratedTypes extends Config {}
+}`;
 
+    const finalContent = `/* tslint:disable */
+/* eslint-disable */
+/**
+ * This file was automatically generated by QuickBase Type Builder.
+ * DO NOT MODIFY IT BY HAND. Instead, modify your QuickBase config,
+ * and re-run \`pnpm generate\` to regenerate this file.
+ */
+
+${appInterfaces.join('\n\n')}
+
+${tableInterfaces.join('\n\n')}
+
+${dataTypes.join('\n\n')}
+
+// Main configuration interface
+export interface Config {
+  apps: {
+${appsConfig}
+  };
+  tables: {
+${tablesConfig}
+  };
+  tableData: {
+${tableDataConfig}
+  };
+}
+
+// =============================================================================
+// FIELD AND TABLE ID MAPPINGS
+// =============================================================================
+
+// Field ID mappings
+export const FieldMappings: Record<string, Record<string, Record<string, number>>> = ${JSON.stringify(fieldMappings, null, 2)};
+
+// Table ID mappings  
+export const TableMappings: Record<string, Record<string, string>> = ${JSON.stringify(tableMappings, null, 2)};
+
+// Field name to ID mapping utility
+export function getFieldId(
+  app: string,
+  table: string,
+  fieldName: string
+): number {
+  const appMappings = FieldMappings[app];
+  if (!appMappings) return 3; // Default to record ID
+  
+  const tableMappings = appMappings[table];
+  if (!tableMappings) return 3; // Default to record ID
+  
+  const fieldId = tableMappings[fieldName];
+  return typeof fieldId === 'number' ? fieldId : 3; // Default to record ID
+}
+
+// Table ID mapping
+export function getTableId(
+  app: string,
+  table: string
+): string {
+  const appMappings = TableMappings[app];
+  if (!appMappings) return String(table);
+  
+  const tableId = appMappings[table];
+  return typeof tableId === 'string' ? tableId : String(table);
+}
+
+${moduleDeclaration}
+`;
+    
+    await fs.writeFile(outputPath, finalContent);
+    console.log('Unified types with mappings generated successfully');
+}
+
+// Re-use existing utility functions from the original script
 async function discoverApp(app: QuickBaseAppConfig, globalConfig: QuickBaseConfig): Promise<DiscoveredApp> {
     const config: DiscoveryConfig = {
         appToken: app.appToken,
@@ -222,95 +376,6 @@ async function discoverApp(app: QuickBaseAppConfig, globalConfig: QuickBaseConfi
     console.log(`   Fields: ${Object.values(appConfig.tables).reduce((sum: number, table: any) => sum + Object.keys(table.fields).length, 0)}`);
     
     return appConfig;
-}
-
-async function generateTypesForApp(app: DiscoveredApp, typesDir: string) {
-    console.log('Generating JSON Schema and TypeScript types...');
-    
-    // Generate JSON Schema for the app
-    const appSchema = generateAppSchema(app);
-    
-    // Save JSON Schema
-    const schemasDir = path.join(process.cwd(), 'schemas');
-    await fs.mkdir(schemasDir, { recursive: true });
-    const schemaPath = path.join(schemasDir, `${app.name}.schema.json`);
-    await fs.writeFile(schemaPath, JSON.stringify(appSchema, null, 2));
-    
-    // Generate TypeScript types
-    const appInterface = await compile(appSchema as any, `${app.name}App`, {
-        bannerComment: `/**\n * Auto-generated types for ${app.displayName}\n * Generated from QuickBase app: ${app.appId}\n * Last updated: ${app.generatedAt}\n */`,
-        style: {
-            semi: true,
-            singleQuote: false,
-            tabWidth: 2,
-            printWidth: 100
-        }
-    });
-    
-    // Generate table interface schemas
-    const tableInterfaces: string[] = [];
-    
-    for (const [tableName, table] of Object.entries(app.tables)) {
-        const tableSchema = generateTableSchema(table);
-        const tableInterface = await compile(tableSchema as any, `${app.name}${pascalCase(tableName)}Table`, {
-            bannerComment: `// Table: ${table.displayName} (${table.tableId})`,
-            style: {
-                semi: true,
-                singleQuote: false,
-                tabWidth: 2,
-                printWidth: 100
-            }
-        });
-        
-        tableInterfaces.push(tableInterface);
-    }
-    
-    // Combine all interfaces
-    const allTypes = [appInterface, ...tableInterfaces].join('\n\n');
-    
-    // Save TypeScript file
-    const typesPath = path.join(typesDir, `${app.name}.types.ts`);
-    await fs.writeFile(typesPath, allTypes);
-}
-
-async function generateTypeAugmentationTemplate(typesDir: string) {
-    const templateContent = `// Auto-generated type augmentation for QuickTypes
-// Import this file in your project to enable full type safety
-
-import type { 
-  AppRegistry, 
-  AppTableRegistry, 
-  TableDataMap, 
-  FieldMappings, 
-  TableMappings 
-} from './client-mappings'
-
-declare module 'quicktypes/dist/client/types' {
-  interface GeneratedTypes {
-    AppRegistry: AppRegistry
-    AppTableRegistry: AppTableRegistry
-    TableDataMap: TableDataMap
-    FieldMappings: FieldMappings
-    TableMappings: TableMappings
-  }
-}
-
-// Also augment the source types during development
-declare module 'quicktypes/src/client/types' {
-  interface GeneratedTypes {
-    AppRegistry: AppRegistry
-    AppTableRegistry: AppTableRegistry
-    TableDataMap: TableDataMap
-    FieldMappings: FieldMappings
-    TableMappings: TableMappings
-  }
-}
-
-export {} // Ensure this is treated as a module
-`;
-
-    await fs.writeFile(path.join(typesDir, 'augment-quicktypes.ts'), templateContent);
-    console.log('Type augmentation template generated successfully');
 }
 
 // Re-use existing utility functions
@@ -587,158 +652,6 @@ function generateFieldSchema(field: DiscoveredField) {
     };
 }
 
-async function generateTypesIndex(typesDir: string, appNames: string[]) {
-    const indexContent = `// Auto-generated index file for QuickBase types
-// This file exports all generated app types
-
-${appNames.map(name => `export * from './${name}.types';`).join('\n')}
-
-// Re-export common interfaces
-export interface QuickBaseField {
-    fieldId: number;
-    type: 'text' | 'email' | 'number' | 'date' | 'checkbox' | 'list' | 'file' | 'url';
-    displayName: string;
-    friendlyName: string;
-    required: boolean;
-    choices?: string[];
-}
-
-export interface QuickBaseTable {
-    tableId: string;
-    displayName: string;
-    friendlyName: string;
-    fields: Record<string, QuickBaseField>;
-}
-
-export interface QuickBaseApp {
-    name: string;
-    appId: string;
-    displayName: string;
-    description?: string;
-    generatedAt: string;
-    tables: Record<string, QuickBaseTable>;
-}
-`;
-
-    await fs.writeFile(path.join(typesDir, 'index.ts'), indexContent);
-}
-
-async function generateClientMappings(typesDir: string, discoveredApps: DiscoveredApp[]) {
-    console.log('Generating client mappings...');
-    
-    // Build AppRegistry and AppTableRegistry content
-    const appRegistry = discoveredApps.map(app => `  ${app.name}: ${app.name}App;`).join('\n');
-    const appTableRegistry = discoveredApps.map(app => {
-        const tables = Object.keys(app.tables).map(tableName => `    ${tableName}: ${app.name}${pascalCase(tableName)}Table;`).join('\n');
-        return `  ${app.name}: {\n${tables}\n  };`;
-    }).join('\n');
-
-    // Build data types for each table
-    const dataTypes = discoveredApps.flatMap(app => 
-        Object.entries(app.tables).map(([tableName, table]) => {
-            const fields = Object.entries(table.fields).map(([fieldName, field]) => {
-                let fieldType = 'string';
-                if (field.type === 'number') fieldType = 'number';
-                if (field.type === 'checkbox') fieldType = 'boolean';
-                if (field.choices && field.choices.length > 0) {
-                    fieldType = field.choices.map(c => `'${c.replace(/'/g, "\\'")}'`).join(' | ');
-                }
-                return `  ${fieldName}?: ${fieldType};`;
-            }).join('\n');
-            return `export type ${app.name}${pascalCase(tableName)}Data = {\n  id?: number | string;\n${fields}\n};`;
-        })
-    ).join('\n\n');
-
-    // Build TableDataMap
-    const tableDataMap = discoveredApps.map(app => {
-        const tables = Object.keys(app.tables).map(tableName => `    ${tableName}: ${app.name}${pascalCase(tableName)}Data;`).join('\n');
-        return `  ${app.name}: {\n${tables}\n  };`;
-    }).join('\n');
-
-    // Build mappings
-    const tableMappings: Record<string, Record<string, string>> = {};
-    const fieldMappings: Record<string, Record<string, Record<string, number>>> = {};
-    
-    for (const app of discoveredApps) {
-        const appName = app.name;
-        tableMappings[appName] = {};
-        fieldMappings[appName] = {};
-        for (const [tableName, table] of Object.entries(app.tables)) {
-            tableMappings[appName][tableName] = table.tableId;
-            fieldMappings[appName][tableName] = {};
-            for (const [fieldName, field] of Object.entries(table.fields)) {
-                fieldMappings[appName][tableName][fieldName] = field.fieldId;
-            }
-        }
-    }
-
-    const finalContent = `// Auto-generated QuickBase client mappings and types
-// Generated from discovered QuickBase schemas
-
-${discoveredApps.map(app => 
-    `import type { ${app.name}App, ${Object.keys(app.tables).map(t => `${app.name}${pascalCase(t)}Table`).join(', ')} } from './${app.name}.types.js';`
-).join('\n')}
-
-// App registry - maps app names to their generated types
-export interface AppRegistry {
-${appRegistry}
-}
-
-// Table registry for each app
-export interface AppTableRegistry {
-${appTableRegistry}
-}
-
-// Extract app names from registry
-export type AppName = keyof AppRegistry;
-
-// Extract table names for a specific app
-export type TableName<TApp extends AppName> = keyof AppTableRegistry[TApp];
-
-// Get table type for specific app and table
-export type AppTable<TApp extends AppName, TTable extends TableName<TApp>> = AppTableRegistry[TApp][TTable];
-
-${dataTypes}
-
-// Map table names to their data types
-export type TableDataMap = {
-${tableDataMap}
-}
-
-// Get data type for app/table combination
-export type GetTableData<TApp extends AppName, TTable extends TableName<TApp>> = 
-  TApp extends keyof TableDataMap ? TableDataMap[TApp][TTable & keyof TableDataMap[TApp]] : Record<string, any>;
-
-// Field ID mappings
-export const FieldMappings = ${JSON.stringify(fieldMappings, null, 2)} as const;
-
-// Table ID mappings  
-export const TableMappings = ${JSON.stringify(tableMappings, null, 2)} as const;
-
-// Field name to ID mapping utility
-export function getFieldId<TApp extends AppName, TTable extends TableName<TApp>>(
-  app: TApp,
-  table: TTable,
-  fieldName: string
-): number {
-  const fieldId = (FieldMappings[app] as Record<string, Record<string, number>>)?.[table as string]?.[fieldName];
-  return typeof fieldId === 'number' ? fieldId : 3; // Default to record ID
-}
-
-// Table ID mapping
-export function getTableId<TApp extends AppName, TTable extends TableName<TApp>>(
-  app: TApp,
-  table: TTable
-): string {
-  return (TableMappings[app] as Record<string, string>)?.[table as string] || String(table);
-}
-`;
-    
-    const clientMappingsPath = path.join(typesDir, 'client-mappings.ts');
-    await fs.writeFile(clientMappingsPath, finalContent);
-    console.log('Client mappings generated successfully');
-}
-
 function pascalCase(str: string): string {
     return str
         .toLowerCase()
@@ -749,8 +662,7 @@ function pascalCase(str: string): string {
 
 // Run if called directly
 if (require.main === module) {
-    main().catch((error) => {
-        console.error(error);
-        process.exit(1);
-    });
-} 
+    main().catch(console.error);
+}
+
+export { main as buildTypes }; 

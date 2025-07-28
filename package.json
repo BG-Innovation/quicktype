@@ -1,56 +1,30 @@
 {
-  "name": "quicktypes",
+  "name": "quicktype",
   "version": "1.0.0",
-  "description": "QuickBase type generation and client library with Payload CMS-inspired API",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    },
-    "./client/types": {
-      "import": "./dist/client/types.js",
-      "require": "./dist/client/types.js", 
-      "types": "./dist/client/types.d.ts"
-    },
-    "./scripts/generate": {
-      "import": "./dist/scripts/generate.js",
-      "require": "./dist/scripts/generate.js",
-      "types": "./dist/scripts/generate.d.ts"
-    }
-  },
+  "description": "QuickBase type generation and discovery tools",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "bin": {
-    "quicktypes-generate": "./dist/scripts/generate.js"
+    "quicktype": "dist/scripts/generate.cjs"
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "prepublishOnly": "npm run build",
-    "test:example": "npx tsx example-usage.ts",
-    "test:consuming": "npx tsx example-consuming-project.ts"
+    "generate": "tsx scripts/generate.ts",
+    "dev": "npm run generate",
+    "types": "npm run generate",
+    "example": "npx tsx example-usage.ts",
+    "example:consumer": "npx tsx example-consumer-usage.ts",
+    "build": "rm -rf dist && tsc && tsc -p tsconfig.scripts.json && mv dist/scripts/generate.js dist/scripts/generate.cjs",
+    "test": "npm run build && npm run example:consumer",
+    "prepublishOnly": "npm run build"
   },
-  "files": [
-    "dist/",
-    "src/",
-    "types/",
-    "scripts/",
-    "README.md"
-  ],
-  "keywords": [
-    "quickbase", 
-    "typescript", 
-    "code-generation", 
-    "api-client",
-    "type-safety",
-    "payload-cms"
-  ],
+  "keywords": ["quickbase", "typescript", "code-generation", "payload-inspired"],
   "author": "",
-  "license": "ISC",
-  "peerDependencies": {
-    "typescript": "^5.0.0"
-  },
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "devDependencies": {
     "json-schema-to-typescript": "^15.0.3",
     "ts-node": "^10.9.2"

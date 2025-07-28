@@ -2,39 +2,7 @@
 // Inspired by Payload CMS Local API operations
 
 import type { QuickBaseConfig } from '../../types/config'
-
-// Fallback types when generated types are not available
-export type FallbackAppName = string
-export type FallbackTableName<TApp extends string> = string  
-export type FallbackTableData<TApp extends string, TTable extends string> = Record<string, any>
-
-// Type utility to check if a module exists
-type ModuleExists<T> = T extends never ? false : true
-
-// Default interface definitions that can be augmented by generated types
-export interface GeneratedTypes {
-  AppRegistry: Record<string, any>
-  AppTableRegistry: Record<string, Record<string, any>>
-  TableDataMap: Record<string, Record<string, Record<string, any>>>
-  FieldMappings: Record<string, Record<string, Record<string, number>>>
-  TableMappings: Record<string, Record<string, string>>
-}
-
-// These will be augmented by generated types when available
-export type AppName = keyof GeneratedTypes['AppRegistry'] extends never 
-  ? FallbackAppName 
-  : keyof GeneratedTypes['AppRegistry']
-
-export type TableName<TApp extends AppName> = TApp extends keyof GeneratedTypes['AppTableRegistry']
-  ? keyof GeneratedTypes['AppTableRegistry'][TApp]
-  : FallbackTableName<TApp extends string ? TApp : string>
-
-export type GetTableData<TApp extends AppName, TTable extends TableName<TApp>> = 
-  TApp extends keyof GeneratedTypes['TableDataMap']
-    ? TTable extends keyof GeneratedTypes['TableDataMap'][TApp]
-      ? GeneratedTypes['TableDataMap'][TApp][TTable]
-      : FallbackTableData<TApp extends string ? TApp : string, TTable extends string ? TTable : string>
-    : FallbackTableData<TApp extends string ? TApp : string, TTable extends string ? TTable : string>
+import type { AppName, TableName, GetTableData } from '../index'
 
 // Common operation options (similar to Payload's base options)
 export interface BaseOptions {
