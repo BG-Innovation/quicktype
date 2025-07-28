@@ -1,23 +1,41 @@
 // QuickBase Local API - Main Entry Point
-// Auto-generated strongly-typed client for QuickBase
+// Payload-inspired QuickBase client with full type safety
 
-// Export the auto-generated strongly-typed client
-export { createQuickBaseClient, QuickBaseClient } from '../types/generated/client.js'
-export type { 
-  AppName, 
-  TableName, 
-  GetTableData,
-  SoftwareData,
-  EmployeesData,
-  ConversationsData,
-  ProjectsData,
-  ProjectdeploymentsData 
-} from '../types/generated/client-mappings.js'
-
-// Export query operators and configuration types
+// Export configuration
+export { buildConfig } from '../types/config'
 export type {
-  QuickBaseClientConfig,
-  QuickBaseOperator,
-  QuickBaseWhere,
-  PaginatedResponse
-} from '../types/generated/client.js' 
+  QuickBaseConfig,
+  QuickBaseAppConfig,
+  ExtractAppSlugs,
+  GetAppBySlug,
+} from '../types/config'
+
+// Export client
+export { getQuickbase } from './client/quickbase'
+export type {
+  QuickBaseClient,
+  FindOptions,
+  FindByIDOptions,
+  CreateOptions,
+  UpdateOptions,
+  DeleteOptions,
+  CountOptions,
+  Where,
+  WhereCondition,
+  Sort,
+  PaginatedDocs,
+  RecordResponse,
+  CountResponse,
+  BulkOperationResult,
+  BaseOptions,
+} from './client/types'
+
+// Re-export types from the existing type system
+export type {
+  QuickBaseField,
+  QuickBaseTable,
+  QuickBaseApp,
+} from '../types/quickbase'
+
+// Re-export generated types if available
+export * from '../types/generated' 

@@ -2,6 +2,10 @@
 
 **Automatic type generation** from QuickBase schemas using JSON Schema and TypeScript.
 
+> **NEW**: This project now includes a **Payload CMS-inspired Local API** for QuickBase! See [README.md](README.md) for the new API documentation.
+
+This document covers the original type generation system. For the new Local API, see the main README.
+
 ## 🚀 Quick Start
 
 1. **Install dependencies:**
@@ -24,24 +28,23 @@ CUSTOMER_DB_APP_ID=your-app-id-2
 CUSTOMER_DB_APP_TOKEN=your-app-token-2
 ```
 
-3. **Configure your apps in `quicktypes.config.js`:**
+3. **Configure your apps in `quickbase.config.ts`:**
 ```javascript
-module.exports = {
+import { buildConfig } from './src';
+
+export default buildConfig({
+  realm: process.env.QUICKBASE_REALM,
+  userToken: process.env.QUICKBASE_USER_TOKEN,
   apps: [
     {
-      name: "BG_SOFTWARE",
+      slug: 'bg_software',
       appId: process.env.BG_SOFTWARE_APP_ID,
       appToken: process.env.BG_SOFTWARE_APP_TOKEN,
-      description: "Background Software Management"
+      description: 'Background Software Management'
     }
     // Add more apps...
-  ],
-  global: {
-    userToken: process.env.QUICKBASE_USER_TOKEN,
-    realm: process.env.QUICKBASE_REALM,
-    baseUrl: process.env.QUICKBASE_BASE_URL || "https://api.quickbase.com/v1"
-  }
-};
+  ]
+});
 ```
 
 4. **Generate everything:**
@@ -61,7 +64,7 @@ QuickBase Apps → Discovery → JSON Schema → TypeScript Types
 ## 📁 Generated Structure
 
 ```
-├── quicktypes.config.js    # App configuration
+├── quickbase.config.ts    # App configuration
 ├── scripts/
 │   └── generate.ts         # QuickBase discovery & type generation
 ├── schemas/                # JSON Schemas (gitignored)
@@ -143,4 +146,4 @@ The discovery script handles all QuickBase field types and maps them to:
 Generated JSON Schemas can validate your QuickBase data structure for runtime safety.
 
 **Multiple apps:**
-Add any number of apps to `quicktypes.config.js` and they'll all be processed automatically. 
+Add any number of apps to `quickbase.config.ts` and they'll all be processed automatically. 

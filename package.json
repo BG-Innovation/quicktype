@@ -6,17 +6,22 @@
   "scripts": {
     "generate": "npx tsx scripts/generate.ts",
     "dev": "npm run generate",
-    "types": "npm run generate"
+    "types": "npm run generate",
+    "example": "npx tsx example-usage.ts",
+    "example:typed": "npx tsx example-usage-typed.ts",
+    "build": "tsc",
+    "test": "npx tsx example-usage.ts"
   },
   "keywords": ["quickbase", "typescript", "code-generation"],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "json-schema-to-typescript": "^15.0.3"
+    "json-schema-to-typescript": "^15.0.3",
+    "ts-node": "^10.9.2"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
-    "tsx": "^4.22.2",
+    "tsx": "^4.20.3",
     "typescript": "^5.7.2"
   }
 }
