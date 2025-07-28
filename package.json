@@ -1,0 +1,22 @@
+{
+  "name": "quicktypes",
+  "version": "1.0.0",
+  "description": "QuickBase type generation and discovery tools",
+  "main": "index.js",
+  "scripts": {
+    "generate": "npx tsx scripts/generate.ts",
+    "dev": "npm run generate",
+    "types": "npm run generate"
+  },
+  "keywords": ["quickbase", "typescript", "code-generation"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "json-schema-to-typescript": "^15.0.3"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "tsx": "^4.22.2",
+    "typescript": "^5.7.2"
+  }
+}
