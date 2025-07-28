@@ -1,29 +1,20 @@
 // QuickBase Configuration Types
 // Inspired by Payload CMS Local API pattern
 
+/**
+ * Configuration for a single QuickBase application.
+ * The 'name' property is used as a unique identifier.
+ */
 export interface QuickBaseAppConfig {
-  /**
-   * The unique identifier for this app in your config
-   */
-  slug: string
-  /**
-   * QuickBase App ID
-   */
-  appId: string
-  /**
-   * QuickBase App Token
-   */
-  appToken: string
-  /**
-   * Human-readable name for this app
-   */
-  name?: string
-  /**
-   * Description of what this app contains
-   */
-  description?: string
+  name: string; // Unique name, used for file generation and as an identifier
+  appId: string;
+  appToken: string;
+  description?: string;
 }
 
+/**
+ * Main QuickBase configuration object.
+ */
 export interface QuickBaseConfig {
   /**
    * QuickBase realm (your-realm.quickbase.com)
@@ -67,11 +58,15 @@ export function buildConfig(config: QuickBaseConfig): QuickBaseConfig {
   }
 }
 
-// Extract app slugs for type safety
-export type ExtractAppSlugs<T extends QuickBaseConfig> = T['apps'][number]['slug']
+/**
+ * Extract app names for type safety
+ */
+export type ExtractAppNames<TConfig extends QuickBaseConfig> = TConfig['apps'][number]['name'];
 
-// Helper type to get app config by slug
-export type GetAppBySlug<T extends QuickBaseConfig, TSlug extends string> = Extract<
-  T['apps'][number],
-  { slug: TSlug }
-> 
+/**
+ * Utility type to retrieve a specific app's configuration by its name.
+ */
+export type GetAppByName<
+  TConfig extends QuickBaseConfig,
+  TName extends ExtractAppNames<TConfig>
+> = Extract<TConfig['apps'][number], { name: TName }>; 

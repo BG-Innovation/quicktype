@@ -6,8 +6,8 @@ export { buildConfig } from '../types/config'
 export type {
   QuickBaseConfig,
   QuickBaseAppConfig,
-  ExtractAppSlugs,
-  GetAppBySlug,
+  ExtractAppNames,
+  GetAppByName,
 } from '../types/config'
 
 // Export client
@@ -28,6 +28,13 @@ export type {
   CountResponse,
   BulkOperationResult,
   BaseOptions,
+  AppName,
+  TableName,
+  GetTableData,
+  GeneratedTypes,
+  FallbackAppName,
+  FallbackTableName,
+  FallbackTableData,
 } from './client/types'
 
 // Re-export types from the existing type system
@@ -37,5 +44,5 @@ export type {
   QuickBaseApp,
 } from '../types/quickbase'
 
-// Re-export generated types if available
-export * from '../types/generated' 
+// Export the generation script function
+export { buildTypes } from '../scripts/generate' 

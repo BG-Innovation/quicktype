@@ -12,7 +12,7 @@ async function typeSafeExample() {
   const quickbase = getQuickbase({ config })
 
   console.log('QuickBase client initialized with type-safe operations')
-  console.log('Available apps:', ['bg_software'] as AppName[])
+  console.log('Available apps:', ['bgsoftware'] as AppName[])
 
   try {
     // Example 1: Type-safe app and table selection
@@ -23,7 +23,7 @@ async function typeSafeExample() {
     // TypeScript will show autocomplete for: 'software', 'employees', 'conversations', 'projects', 'projectdeployments'
     
     const software = await quickbase.find({
-      app: 'bg_software', // ✅ Type-safe: only valid app names
+      app: 'bgsoftware', // ✅ Type-safe: only valid app names
       table: 'software',  // ✅ Type-safe: only valid table names for bg_software app
       where: {
         // ✅ Type-safe field names with autocomplete
@@ -42,7 +42,7 @@ async function typeSafeExample() {
     console.log('\n--- Type-Safe Field Selection ---')
     
     const employees = await quickbase.find({
-      app: 'bg_software',
+      app: 'bgsoftware',
       table: 'employees',
       select: ['firstName', 'lastName', 'email', 'department'], // ✅ Autocomplete available
       where: {
@@ -62,7 +62,7 @@ async function typeSafeExample() {
     console.log('\n--- Type-Safe Create Example ---')
     
     const newSoftware = await quickbase.create({
-      app: 'bg_software',
+      app: 'bgsoftware',
       table: 'software',
       data: {
         // ✅ TypeScript will validate field names and types
@@ -81,7 +81,7 @@ async function typeSafeExample() {
     console.log('\n--- Complex Type-Safe Query ---')
     
     const complexQuery = await quickbase.find({
-      app: 'bg_software',
+      app: 'bgsoftware',
       table: 'projects',
       where: {
         // ✅ All field names are type-safe with autocomplete
@@ -107,7 +107,7 @@ async function typeSafeExample() {
     
     if (newSoftware.metadata?.recordId) {
       const updatedSoftware = await quickbase.update({
-        app: 'bg_software',
+        app: 'bgsoftware',
         table: 'software',
         id: newSoftware.metadata.recordId,
         data: {
@@ -123,11 +123,11 @@ async function typeSafeExample() {
     console.log('\n--- Working with Specific Table Types ---')
     
     // You can also work with specific table types
-    type SoftwareTable = TableName<'bg_software'> & 'software'
-    type EmployeesTable = TableName<'bg_software'> & 'employees'
+    type SoftwareTable = TableName<'bgsoftware'> & 'software'
+    type EmployeesTable = TableName<'bgsoftware'> & 'employees'
     
     const specificSoftwareQuery = await quickbase.count({
-      app: 'bg_software',
+      app: 'bgsoftware',
       table: 'software' as SoftwareTable,
       where: {
         status: { equals: 'Active' }
@@ -144,7 +144,7 @@ async function typeSafeExample() {
     // Show what kind of errors TypeScript prevents:
     console.log('\n--- TypeScript prevents these errors at compile time: ---')
     console.log('❌ quickbase.find({ app: "invalid_app" })        // Invalid app name')
-    console.log('❌ quickbase.find({ app: "bg_software", table: "invalid_table" }) // Invalid table')
+    console.log('❌ quickbase.find({ app: "bgsoftware", table: "invalid_table" }) // Invalid table')
     console.log('❌ where: { invalidField: "value" }             // Invalid field name')
     console.log('❌ data: { status: "InvalidStatus" }            // Invalid choice value')
     console.log('❌ select: ["nonExistentField"]                 // Invalid field in select')
@@ -157,18 +157,18 @@ function autocompleteDemo() {
   
   // When you type this in your IDE:
   // quickbase.find({ app: '|' })
-  // TypeScript will show: 'bg_software'
+  // TypeScript will show: 'bgsoftware'
   
   // When you type this in your IDE:
-  // quickbase.find({ app: 'bg_software', table: '|' })
+  // quickbase.find({ app: 'bgsoftware', table: '|' })
   // TypeScript will show: 'software' | 'employees' | 'conversations' | 'projects' | 'projectdeployments'
   
   // When you type this in your IDE:
-  // quickbase.find({ app: 'bg_software', table: 'software', where: { |
+  // quickbase.find({ app: 'bgsoftware', table: 'software', where: { |
   // TypeScript will show all available field names: name, type, status, vendor, etc.
   
   // When you type this in your IDE:
-  // quickbase.find({ app: 'bg_software', table: 'software', where: { status: '|'
+  // quickbase.find({ app: 'bgsoftware', table: 'software', where: { status: '|'
   // TypeScript will show: 'Enterprise' | 'Active' | 'Pilot' | 'Tracking' | 'Closed'
   
   console.log('🎯 Full IntelliSense support for all apps, tables, fields, and choice values!')
