@@ -2,9 +2,9 @@
   "name": "quicktypes",
   "version": "1.0.0",
   "description": "QuickBase type generation and discovery tools",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
-    "generate": "npx tsx scripts/generate.ts",
+    "generate": "tsx --tsconfig scripts/tsconfig.scripts.json scripts/generate.ts",
     "dev": "npm run generate",
     "types": "npm run generate",
     "example": "npx tsx example-usage.ts",

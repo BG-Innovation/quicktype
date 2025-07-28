@@ -1,7 +1,7 @@
 // QuickBase Configuration
 // This file defines your QuickBase apps and connection settings
 
-import { buildConfig } from './src'
+import { buildConfig } from './types/config'
 
 export default buildConfig({
   // Your QuickBase realm (without .quickbase.com)
