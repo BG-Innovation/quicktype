@@ -12,9 +12,9 @@ yarn-error.log*
 .env.production.local
 
 # Generated files
-dist/
 schemas/
 types/generated/
+# Note: dist/ is committed for CLI binary distribution
 
 # Build artifacts
 *.tsbuildinfo

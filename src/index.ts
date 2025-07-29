@@ -62,6 +62,11 @@ export interface GeneratedTypes {
       [tableName: string]: Record<string, any>
     }
   }
+  tableWritableDataUntyped: {
+    [appName: string]: {
+      [tableName: string]: Record<string, any>
+    }
+  }
 
 }
 
@@ -81,12 +86,17 @@ type ResolveTableDataType<T> = 'tableData' extends keyof T
   : // @ts-expect-error
     T['tableDataUntyped']
 
+type ResolveTableWritableDataType<T> = 'tableWritableData' extends keyof T 
+  ? T['tableWritableData'] 
+  : // @ts-expect-error
+    T['tableWritableDataUntyped']
 
 
 // Apply resolver types to GeneratedTypes (like Payload's TypedCollection)
 export type TypedApps = ResolveAppType<GeneratedTypes>
 export type TypedTables = ResolveTableType<GeneratedTypes>
 export type TypedTableData = ResolveTableDataType<GeneratedTypes>
+export type TypedTableWritableData = ResolveTableWritableDataType<GeneratedTypes>
 
 // Helper type for string keys (like Payload's StringKeyOf)
 type StringKeyOf<T> = Extract<keyof T, string>
@@ -102,6 +112,14 @@ export type GetTableData<TApp extends AppName, TTable extends TableName<TApp>> =
   TApp extends keyof TypedTableData 
     ? TTable extends keyof TypedTableData[TApp]
       ? TypedTableData[TApp][TTable]
+      : Record<string, any>
+    : Record<string, any>
+
+// Get writable table data type (excludes read-only fields)
+export type GetTableWritableData<TApp extends AppName, TTable extends TableName<TApp>> = 
+  TApp extends keyof TypedTableWritableData 
+    ? TTable extends keyof TypedTableWritableData[TApp]
+      ? TypedTableWritableData[TApp][TTable]
       : Record<string, any>
     : Record<string, any>
 

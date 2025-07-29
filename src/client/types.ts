@@ -2,7 +2,7 @@
 // Inspired by Payload CMS Local API operations
 
 import type { QuickBaseConfig } from '../types/config'
-import type { AppName, TableName, GetTableData } from '../index'
+import type { AppName, TableName, GetTableData, GetTableWritableData } from '../index'
 
 // Common operation options (similar to Payload's base options)
 export interface BaseOptions {
@@ -30,10 +30,12 @@ export interface WhereCondition {
   lessThan?: number
   greaterThanOrEqual?: number
   lessThanOrEqual?: number
-  contains?: string
-  notContains?: string
-  startsWith?: string
-  endsWith?: string
+  contains?: string | string[]
+  notContains?: string | string[]
+  startsWith?: string | string[]
+  notStartsWith?: string | string[]
+  endsWith?: string | string[]
+  notEndsWith?: string | string[]
   isEmpty?: boolean
   isNotEmpty?: boolean
   in?: any[]
@@ -124,7 +126,7 @@ export interface CreateOptions<TApp extends AppName, TTable extends TableName<TA
   /**
    * The data to create (type-safe)
    */
-  data: Partial<GetTableData<TApp, TTable>>
+  data: Partial<GetTableWritableData<TApp, TTable>>
   /**
    * Specific fields to return (type-safe field names)
    */
@@ -148,7 +150,7 @@ export interface UpdateOptions<TApp extends AppName, TTable extends TableName<TA
   /**
    * The data to update (type-safe)
    */
-  data: Partial<GetTableData<TApp, TTable>>
+  data: Partial<GetTableWritableData<TApp, TTable>>
   /**
    * Specific fields to return (type-safe field names)
    */

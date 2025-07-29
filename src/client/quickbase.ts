@@ -24,6 +24,7 @@ import type {
   AppName,
   TableName,
   GetTableData,
+  GetTableWritableData,
 } from '../index'
 
 // Payload-inspired approach: Pure TypeScript conditional type resolution
@@ -105,7 +106,7 @@ export class QuickBaseClientImpl<TConfig extends QuickBaseConfig> implements Qui
   private transformDataToQB<TApp extends AppName, TTable extends TableName<TApp> & string>(
     app: TApp,
     table: TTable,
-    data: Partial<GetTableData<TApp, TTable>>
+    data: Partial<GetTableWritableData<TApp, TTable>>
   ): Record<string, { value: any }> {
     const transformed: Record<string, { value: any }> = {};
     for (const fieldName in data) {
@@ -386,7 +387,7 @@ export class QuickBaseClientImpl<TConfig extends QuickBaseConfig> implements Qui
     const operatorMap = {
       equals: 'EX', notEquals: 'XEX', greaterThan: 'GT', lessThan: 'LT',
       greaterThanOrEqual: 'GTE', lessThanOrEqual: 'LTE', contains: 'CT', notContains: 'XCT',
-      startsWith: 'SW', endsWith: 'EW',
+      startsWith: 'SW', notStartsWith: 'XSW', endsWith: 'EW', notEndsWith: 'XEW',
     }
     
     const conditions = Object.entries(condition).map(([op, value]) => {
@@ -396,6 +397,21 @@ export class QuickBaseClientImpl<TConfig extends QuickBaseConfig> implements Qui
         const opStr = op === 'in' ? 'EX' : 'XEX'
         const values = (Array.isArray(value) ? value : [value]).map(v => `'${v}'`).join(';')
         return `{${fieldId}.${opStr}.${values}}`
+      }
+      // Handle text operators that can accept arrays
+      if (op === 'contains' || op === 'notContains' || op === 'startsWith' || op === 'notStartsWith' || op === 'endsWith' || op === 'notEndsWith') {
+        const qbOp = operatorMap[op as keyof typeof operatorMap]
+        if (Array.isArray(value)) {
+          const arrayConditions = value.map(v => `{${fieldId}.${qbOp}.'${v}'}`);
+          // For "not" operators, use AND logic (must not match ANY of the values)
+          // For positive operators, use OR logic (can match ANY of the values)
+          const useAndLogic = op.startsWith('not');
+          const joiner = useAndLogic ? ' AND ' : ' OR ';
+          const combined = arrayConditions.join(joiner);
+          return value.length > 1 ? `(${combined})` : combined;
+        } else {
+          return `{${fieldId}.${qbOp}.'${value}'}`
+        }
       }
       const qbOp = operatorMap[op as keyof typeof operatorMap]
       return qbOp ? `{${fieldId}.${qbOp}.'${value}'}` : ''
