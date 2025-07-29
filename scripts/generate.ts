@@ -4,6 +4,7 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
+import { spawn } from 'child_process';
 import { config as dotenvConfig } from 'dotenv';
 import { compile } from 'json-schema-to-typescript';
 import type { 
@@ -11,8 +12,8 @@ import type {
     QuickBaseApiField,
     QuickBaseApiTable,
     QuickBaseApiApp
-} from '../types/quickbase';
-import type { QuickBaseConfig, QuickBaseAppConfig } from '../types/config';
+} from '../src/types/quickbase';
+import type { QuickBaseConfig, QuickBaseAppConfig } from '../src/types/config';
 
 // Load environment variables
 dotenvConfig();
@@ -45,6 +46,74 @@ interface DiscoveredField {
     choices?: string[];
 }
 
+async function loadConfig(configPath: string, configType: string): Promise<QuickBaseConfig> {
+    try {
+        switch (configType) {
+            case 'json': {
+                const content = await fs.readFile(configPath, 'utf8');
+                return JSON.parse(content);
+            }
+            
+            case 'js': {
+                // For .js files, use dynamic import which works with both CommonJS and ES modules
+                const configModule = await import(`file://${path.resolve(configPath)}`);
+                return configModule.default || configModule;
+            }
+            
+            case 'ts': {
+                // For .ts files, use tsx to compile and execute
+                return new Promise((resolve, reject) => {
+                    const tsx = spawn('npx', ['tsx', '--eval', `
+                        import config from '${configPath}';
+                        console.log('___CONFIG_START___');
+                        console.log(JSON.stringify(config.default || config, null, 2));
+                        console.log('___CONFIG_END___');
+                    `], {
+                        cwd: process.cwd(),
+                        stdio: ['pipe', 'pipe', 'pipe']
+                    });
+                    
+                    let stdout = '';
+                    let stderr = '';
+                    
+                    tsx.stdout.on('data', (data: Buffer) => stdout += data.toString());
+                    tsx.stderr.on('data', (data: Buffer) => stderr += data.toString());
+                    
+                    tsx.on('close', (code: number) => {
+                        if (code !== 0) {
+                            reject(new Error(`Failed to load TypeScript config: ${stderr}`));
+                            return;
+                        }
+                        
+                        try {
+                            const startMarker = '___CONFIG_START___';
+                            const endMarker = '___CONFIG_END___';
+                            const startIndex = stdout.indexOf(startMarker);
+                            const endIndex = stdout.indexOf(endMarker);
+                            
+                            if (startIndex === -1 || endIndex === -1) {
+                                reject(new Error(`Could not extract config from output: ${stdout}`));
+                                return;
+                            }
+                            
+                            const jsonStr = stdout.substring(startIndex + startMarker.length, endIndex).trim();
+                            const config = JSON.parse(jsonStr);
+                            resolve(config);
+                        } catch (error) {
+                            reject(new Error(`Failed to parse TypeScript config: ${error instanceof Error ? error.message : error}`));
+                        }
+                    });
+                });
+            }
+            
+            default:
+                throw new Error(`Unsupported config file type: ${configType}`);
+        }
+    } catch (error) {
+        throw new Error(`Failed to load config from ${configPath}: ${error instanceof Error ? error.message : error}`);
+    }
+}
+
 async function main() {
     const command = process.argv[2];
 
@@ -64,23 +133,33 @@ async function main() {
 
 async function discoverAndGenerateTypes(): Promise<void> {
     try {
-        const configPath = path.join(process.cwd(), 'quickbase.config.ts');
-        const configExists = await fs.access(configPath).then(() => true).catch(() => false);
+        // Look for config files in order of preference: .js, .json, .ts
+        const configOptions = [
+            { path: path.join(process.cwd(), 'quickbase.config.js'), type: 'js' },
+            { path: path.join(process.cwd(), 'quickbase.config.json'), type: 'json' },
+            { path: path.join(process.cwd(), 'quickbase.config.ts'), type: 'ts' }
+        ];
         
-        if (!configExists) {
-            throw new Error(`Config file not found at ${configPath}. Please create quickbase.config.ts with your app configurations.`);
+        let configPath: string | null = null;
+        let configType: string | null = null;
+        
+        for (const option of configOptions) {
+            const exists = await fs.access(option.path).then(() => true).catch(() => false);
+            if (exists) {
+                configPath = option.path;
+                configType = option.type;
+                break;
+            }
+        }
+        
+        if (!configPath || !configType) {
+            throw new Error(`Config file not found. Please create one of:\n  - quickbase.config.js (recommended)\n  - quickbase.config.json\n  - quickbase.config.ts`);
         }
 
-        // Temporarily use ts-node to load the TypeScript config without a full build
-        require('ts-node').register({
-            transpileOnly: true,
-            compilerOptions: {
-                module: 'commonjs'
-            }
-        });
-
-        const configModule = require(configPath);
-        const appsConfig: QuickBaseConfig = configModule.default || configModule;
+        console.log(`Using config file: ${path.basename(configPath)}`);
+        
+        // Load config based on type
+        const appsConfig: QuickBaseConfig = await loadConfig(configPath, configType);
         
         console.log(`Found ${appsConfig.apps.length} apps in config file`);
         
@@ -220,9 +299,8 @@ async function generateUnifiedTypesWithMappings(discoveredApps: DiscoveredApp[],
         isQuicktypePackage = false;
     }
     
-    const moduleDeclaration = isQuicktypePackage 
-        ? '// Module declaration omitted when running in the quicktype package itself'
-        : `// Module declaration to extend QuickBase's GeneratedTypes
+    // Always include module declaration (like Payload does)
+    const moduleDeclaration = `// Module declaration to extend QuickBase's GeneratedTypes (Payload-style)
 declare module 'quicktype' {
   export interface GeneratedTypes extends Config {}
 }`;
@@ -241,7 +319,7 @@ ${tableInterfaces.join('\n\n')}
 
 ${dataTypes.join('\n\n')}
 
-// Main configuration interface
+                                                        // Main configuration interface for module merging
 export interface Config {
   apps: {
 ${appsConfig}
@@ -255,42 +333,15 @@ ${tableDataConfig}
 }
 
 // =============================================================================
-// FIELD AND TABLE ID MAPPINGS
+// RUNTIME MAPPINGS
 // =============================================================================
+// Import this object into your QuickBase config file.
+export const RuntimeMappings = {
+  fieldMappings: ${JSON.stringify(fieldMappings, null, 2)},
+  tableMappings: ${JSON.stringify(tableMappings, null, 2)}
+} as const;
 
-// Field ID mappings
-export const FieldMappings: Record<string, Record<string, Record<string, number>>> = ${JSON.stringify(fieldMappings, null, 2)};
 
-// Table ID mappings  
-export const TableMappings: Record<string, Record<string, string>> = ${JSON.stringify(tableMappings, null, 2)};
-
-// Field name to ID mapping utility
-export function getFieldId(
-  app: string,
-  table: string,
-  fieldName: string
-): number {
-  const appMappings = FieldMappings[app];
-  if (!appMappings) return 3; // Default to record ID
-  
-  const tableMappings = appMappings[table];
-  if (!tableMappings) return 3; // Default to record ID
-  
-  const fieldId = tableMappings[fieldName];
-  return typeof fieldId === 'number' ? fieldId : 3; // Default to record ID
-}
-
-// Table ID mapping
-export function getTableId(
-  app: string,
-  table: string
-): string {
-  const appMappings = TableMappings[app];
-  if (!appMappings) return String(table);
-  
-  const tableId = appMappings[table];
-  return typeof tableId === 'string' ? tableId : String(table);
-}
 
 ${moduleDeclaration}
 `;

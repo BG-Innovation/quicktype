@@ -1,7 +1,7 @@
 // QuickBase Client Types
 // Inspired by Payload CMS Local API operations
 
-import type { QuickBaseConfig } from '../../types/config'
+import type { QuickBaseConfig } from '../types/config'
 import type { AppName, TableName, GetTableData } from '../index'
 
 // Common operation options (similar to Payload's base options)

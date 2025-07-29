@@ -4,7 +4,7 @@
 import type {
   QuickBaseConfig,
   GetAppByName,
-} from '../../types/config'
+} from '../types/config'
 import type {
   QuickBaseClient,
   FindOptions,
@@ -26,65 +26,43 @@ import type {
   GetTableData,
 } from '../index'
 
-// Fallback field mappings when generated types aren't available
-const fallbackFieldMappings: Record<string, Record<string, Record<string, number>>> = {}
-const fallbackTableMappings: Record<string, Record<string, string>> = {}
+// Payload-inspired approach: Pure TypeScript conditional type resolution
+// NO runtime loading, NO global variables, NO side effects - exactly like Payload!
 
-// Try to import generated mappings, but don't fail if they don't exist
-let FieldMappings: Record<string, Record<string, Record<string, number>>> = fallbackFieldMappings
-let TableMappings: Record<string, Record<string, string>> = fallbackTableMappings
-
-try {
-  // Try to load mappings from the consuming codebase (where pnpm generate creates them)
-  const generatedTypes = require(process.cwd() + '/quickbase-types')
-  FieldMappings = generatedTypes.FieldMappings || fallbackFieldMappings
-  TableMappings = generatedTypes.TableMappings || fallbackTableMappings
-} catch {
-  // Generated types don't exist - use fallbacks
-  console.debug('QuickBase: Using fallback field mappings. Run `pnpm generate` to enable type-safe field mappings.')
-}
-
-// Fallback functions for field/table ID resolution
+// Pure Payload approach: Type safety + sensible runtime defaults (no runtime mapping needed!)
 function getFieldId<TApp extends AppName, TTable extends TableName<TApp>>(
+  config: QuickBaseConfig,
   app: TApp,
   table: TTable,
   fieldName: string
 ): number {
-  const fieldId = FieldMappings[app as string]?.[table as string]?.[fieldName]
-  return typeof fieldId === 'number' ? fieldId : 3 // Default to record ID field
+  const fieldId = config.mappings.fieldMappings?.[app as string]?.[table as string]?.[fieldName];
+  if (typeof fieldId === 'number') {
+    return fieldId;
+  }
+  // Fallback for safety, though with required mappings this is less likely to be hit.
+  return 3;
 }
 
 function getTableId<TApp extends AppName, TTable extends TableName<TApp>>(
+  config: QuickBaseConfig,
   app: TApp,
   table: TTable
 ): string {
-  return TableMappings[app as string]?.[table as string] || String(table)
+  const tableId = config.mappings.tableMappings?.[app as string]?.[table as string];
+  if (typeof tableId === 'string') {
+    return tableId;
+  }
+  return String(table);
 }
 
 export class QuickBaseClientImpl<TConfig extends QuickBaseConfig> implements QuickBaseClient<TConfig> {
   public config: TConfig
   private fetch: typeof globalThis.fetch
-  private reverseFieldMappings: Record<string, Record<string, Record<number, string>>> = {}
 
   constructor(config: TConfig) {
     this.config = config
     this.fetch = globalThis.fetch
-    this.buildReverseMappings()
-  }
-  
-  private buildReverseMappings() {
-    for (const appName in FieldMappings) {
-      this.reverseFieldMappings[appName] = {}
-      const tables = FieldMappings[appName as AppName]
-      for (const tableName in tables) {
-        this.reverseFieldMappings[appName][tableName] = {}
-        const fields = tables[tableName as keyof typeof tables]
-        for (const fieldName in fields) {
-          const fieldId = fields[fieldName as keyof typeof fields]
-          this.reverseFieldMappings[appName][tableName][fieldId] = fieldName
-        }
-      }
-    }
   }
   
   private transformRecordFromQB<TApp extends AppName, TTable extends TableName<TApp> & string>(
@@ -92,30 +70,36 @@ export class QuickBaseClientImpl<TConfig extends QuickBaseConfig> implements Qui
     table: TTable,
     record: Record<string, { value: any }>
   ): GetTableData<TApp, TTable> {
-    const transformed: Record<string, any> = {}
-    const mapping = this.reverseFieldMappings[app]?.[table]
-    
-    // If no mapping available, use raw field IDs as fallback
-    if (!mapping || Object.keys(mapping).length === 0) {
-      for (const fieldId in record) {
-        if (fieldId === '3') {
-          transformed['id'] = record[fieldId].value
-        } else {
-          transformed[`field_${fieldId}`] = record[fieldId].value
+    const transformed: Record<string, any> = {};
+    const fieldMappings = this.config.mappings?.fieldMappings;
+    const reverseMapping: Record<number, string> = {};
+
+    if (fieldMappings?.[app as string]?.[table as string]) {
+      for (const [name, id] of Object.entries(fieldMappings[app as string][table as string])) {
+        reverseMapping[id] = name;
+      }
+    }
+
+    for (const fieldId in record) {
+      const numericFieldId = Number(fieldId);
+      const fieldName = reverseMapping[numericFieldId];
+
+      if (fieldName) {
+        transformed[fieldName] = record[fieldId].value;
+      } else {
+        // Fallback for system fields or unmapped fields
+        switch (numericFieldId) {
+          case 1: transformed['dateCreated'] = record[fieldId].value; break;
+          case 2: transformed['dateModified'] = record[fieldId].value; break;
+          case 3: transformed['id'] = record[fieldId].value; break;
+          case 4: transformed['recordOwner'] = record[fieldId].value; break;
+          case 5: transformed['lastModifiedBy'] = record[fieldId].value; break;
+          default: transformed[`field_${fieldId}`] = record[fieldId].value; break;
         }
       }
-      return transformed as GetTableData<TApp, TTable>
     }
     
-    for (const fieldId in record) {
-      const fieldName = mapping[Number(fieldId)] || `field_${fieldId}`
-      if (fieldName === 'id' || fieldName.startsWith('field_')) {
-        transformed['id'] = record[fieldId].value
-      } else {
-        transformed[fieldName] = record[fieldId].value
-      }
-    }
-    return transformed as GetTableData<TApp, TTable>
+    return transformed as GetTableData<TApp, TTable>;
   }
   
   private transformDataToQB<TApp extends AppName, TTable extends TableName<TApp> & string>(
@@ -123,14 +107,20 @@ export class QuickBaseClientImpl<TConfig extends QuickBaseConfig> implements Qui
     table: TTable,
     data: Partial<GetTableData<TApp, TTable>>
   ): Record<string, { value: any }> {
-    const transformed: Record<string, { value: any }> = {}
+    const transformed: Record<string, { value: any }> = {};
     for (const fieldName in data) {
-      const fieldId = getFieldId(app, table, fieldName)
-      if (fieldId) {
-        transformed[String(fieldId)] = { value: data[fieldName as keyof typeof data] }
+      const value = data[fieldName as keyof typeof data];
+
+      // The QuickBase API requires a 'value' property for all fields sent.
+      // If a value is undefined, we must skip it to avoid sending an invalid empty object.
+      if (value !== undefined) {
+        const fieldId = getFieldId(this.config, app, table, fieldName);
+        if (fieldId) {
+          transformed[String(fieldId)] = { value };
+        }
       }
     }
-    return transformed
+    return transformed;
   }
 
   /**
@@ -142,7 +132,7 @@ export class QuickBaseClientImpl<TConfig extends QuickBaseConfig> implements Qui
     const { app, table, where, sort, limit = 20, page = 1, select, debug, disableErrors } = options
     
     const appConfig = this.getAppConfig(app)
-    const tableId = getTableId(app, table)
+    const tableId = getTableId(this.config, app, table)
     
     try {
       const body = {
@@ -194,7 +184,7 @@ export class QuickBaseClientImpl<TConfig extends QuickBaseConfig> implements Qui
     const { app, table, id, select, debug, disableErrors } = options
     
     const appConfig = this.getAppConfig(app)
-    const tableId = getTableId(app, table)
+    const tableId = getTableId(this.config, app, table)
     
     try {
       const body = {
@@ -236,7 +226,7 @@ export class QuickBaseClientImpl<TConfig extends QuickBaseConfig> implements Qui
     const { app, table, data, select, debug } = options
     
     const appConfig = this.getAppConfig(app)
-    const tableId = getTableId(app, table)
+    const tableId = getTableId(this.config, app, table)
     
     const body = {
       to: tableId,
@@ -264,7 +254,7 @@ export class QuickBaseClientImpl<TConfig extends QuickBaseConfig> implements Qui
     const { app, table, id, data, select, debug } = options
     
     const appConfig = this.getAppConfig(app)
-    const tableId = getTableId(app, table)
+    const tableId = getTableId(this.config, app, table)
     
     const transformedData = this.transformDataToQB(app, table, data)
     transformedData['3'] = { value: id }
@@ -293,7 +283,7 @@ export class QuickBaseClientImpl<TConfig extends QuickBaseConfig> implements Qui
     const { app, table, id, debug } = options
     
     const appConfig = this.getAppConfig(app)
-    const tableId = getTableId(app, table)
+    const tableId = getTableId(this.config, app, table)
     
     const body = {
       from: tableId,
@@ -314,7 +304,7 @@ export class QuickBaseClientImpl<TConfig extends QuickBaseConfig> implements Qui
     const { app, table, where, debug, disableErrors } = options
     
     const appConfig = this.getAppConfig(app)
-    const tableId = getTableId(app, table)
+    const tableId = getTableId(this.config, app, table)
     
     try {
       const body = {
@@ -353,7 +343,7 @@ export class QuickBaseClientImpl<TConfig extends QuickBaseConfig> implements Qui
   ): number[] | undefined {
     if (!select || select.length === 0) return undefined
     
-    return select.map(field => getFieldId(app, table, field as string)).filter(id => id > 0)
+    return select.map(field => getFieldId(this.config, app, table, field as string)).filter(id => id > 0)
   }
 
   private buildWhereClause<TApp extends AppName, TTable extends TableName<TApp> & string>(
@@ -368,7 +358,7 @@ export class QuickBaseClientImpl<TConfig extends QuickBaseConfig> implements Qui
       for (const [field, condition] of Object.entries(w)) {
         if (field === 'and' || field === 'or') continue
 
-        const fieldId = getFieldId(app, table, field as string)
+        const fieldId = getFieldId(this.config, app, table, field as string)
         if (typeof condition === 'object' && condition !== null) {
           innerConditions.push(this.buildFieldCondition(String(fieldId), condition as WhereCondition))
         } else {
@@ -425,7 +415,7 @@ export class QuickBaseClientImpl<TConfig extends QuickBaseConfig> implements Qui
     
     return sortArray.map(sortField => {
       const fieldName = String(sortField).replace(/^-/, '')
-      const fieldId = getFieldId(app, table, fieldName)
+      const fieldId = getFieldId(this.config, app, table, fieldName)
       return {
         fieldId,
         order: String(sortField).startsWith('-') ? 'DESC' as const : 'ASC' as const,

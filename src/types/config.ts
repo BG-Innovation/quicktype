@@ -34,6 +34,18 @@ export interface QuickBaseConfig {
    */
   apps: QuickBaseAppConfig[]
   /**
+   * Runtime mappings for field and table IDs.
+   * Import this from your generated `quickbase-types.ts` file.
+   * @example
+   * ```ts
+   * import { RuntimeMappings } from './quickbase-types'
+   * ```
+   */
+  mappings: {
+    fieldMappings: Record<string, Record<string, Record<string, number>>>
+    tableMappings: Record<string, Record<string, string>>
+  }
+  /**
    * Default request timeout in milliseconds
    * @default 30000
    */
