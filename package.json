@@ -34,11 +34,11 @@
     "LICENSE"
   ],
   "devDependencies": {
-    "json-schema-to-typescript": "^15.0.3",
     "ts-node": "^10.9.2"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
+    "json-schema-to-typescript": "^15.0.3",
     "tsx": "^4.20.3",
     "typescript": "^5.7.2"
   }
