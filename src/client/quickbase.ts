@@ -263,6 +263,7 @@ export class QuickBaseClientImpl<TConfig extends QuickBaseConfig> implements Qui
     const body = {
       to: tableId,
       data: [transformedData],
+      mergeFieldId: 3, // This tells QuickBase to update records matching field 3 (Record ID) instead of creating new ones
       fieldsToReturn: this.buildSelectFields(app, table, select)?.map(String),
     }
 
