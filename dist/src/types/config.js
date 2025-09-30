@@ -2,7 +2,7 @@
 // QuickBase Configuration Types
 // Inspired by Payload CMS Local API pattern
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.buildConfig = buildConfig;
+exports.buildConfig = void 0;
 /**
  * Build a QuickBase configuration
  * Similar to Payload's buildConfig function
@@ -15,4 +15,5 @@ function buildConfig(config) {
         ...config,
     };
 }
+exports.buildConfig = buildConfig;
 //# sourceMappingURL=config.js.map

@@ -191,6 +191,7 @@ export class QuickBaseClientImpl {
         const body = {
             to: tableId,
             data: [transformedData],
+            mergeFieldId: 3,
             fieldsToReturn: this.buildSelectFields(app, table, select)?.map(String),
         };
         const response = await this.makeRequest(appConfig, '/records', 'POST', body, debug);
