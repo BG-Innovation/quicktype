@@ -191,7 +191,7 @@ export class QuickBaseClientImpl {
         const body = {
             to: tableId,
             data: [transformedData],
-            mergeFieldId: 3,
+            mergeFieldId: 3, // This tells QuickBase to update records matching field 3 (Record ID) instead of creating new ones
             fieldsToReturn: this.buildSelectFields(app, table, select)?.map(String),
         };
         const response = await this.makeRequest(appConfig, '/records', 'POST', body, debug);
