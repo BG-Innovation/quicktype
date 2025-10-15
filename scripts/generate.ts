@@ -247,7 +247,7 @@ async function generateUnifiedTypesWithMappings(discoveredApps: DiscoveredApp[],
     // Build data types for each table
     const dataTypes = discoveredApps.flatMap(app => 
         Object.entries(app.tables).map(([tableName, table]) => {
-            // Generate all fields (read-only and writable)
+            // Generate all fields (read-only and writable) with original QuickBase names in quotes
             const allFields = Object.entries(table.fields).map(([fieldName, field]) => {
                 let fieldType = 'string';
                 if (field.type === 'number') fieldType = 'number';
@@ -255,10 +255,12 @@ async function generateUnifiedTypesWithMappings(discoveredApps: DiscoveredApp[],
                 if (field.choices && field.choices.length > 0) {
                     fieldType = field.choices.map(c => `'${c.replace(/'/g, "\\'")}'`).join(' | ');
                 }
-                return `  ${fieldName}?: ${fieldType};`;
+                // Escape field name for TypeScript (escape backslashes and quotes)
+                const escapedFieldName = fieldName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+                return `  "${escapedFieldName}"?: ${fieldType};`;
             }).join('\n');
             
-            // Generate only writable fields (exclude read-only)
+            // Generate only writable fields (exclude read-only) with original QuickBase names in quotes
             const writableFields = Object.entries(table.fields)
                 .filter(([fieldName, field]) => !field.readOnly)
                 .map(([fieldName, field]) => {
@@ -268,7 +270,9 @@ async function generateUnifiedTypesWithMappings(discoveredApps: DiscoveredApp[],
                     if (field.choices && field.choices.length > 0) {
                         fieldType = field.choices.map(c => `'${c.replace(/'/g, "\\'")}'`).join(' | ');
                     }
-                    return `  ${fieldName}?: ${fieldType};`;
+                    // Escape field name for TypeScript (escape backslashes and quotes)
+                    const escapedFieldName = fieldName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+                    return `  "${escapedFieldName}"?: ${fieldType};`;
                 }).join('\n');
             
             const fullInterface = `export interface ${app.name}${pascalCase(tableName)}Data {\n  id?: number | string;\n${allFields}\n}`;
@@ -433,20 +437,24 @@ async function discoverApp(app: QuickBaseAppConfig, globalConfig: QuickBaseConfi
             fields: {}
         };
 
-        // Process fields
+        // Process fields - use original field names without normalization
         for (const field of fields) {
-            const friendlyFieldName = generateFriendlyFieldName(field.label);
+            // Use original field label as the key (no normalization to avoid collisions)
+            const fieldKey = field.label;
             
-            appConfig.tables[friendlyTableName].fields[friendlyFieldName] = {
+            appConfig.tables[friendlyTableName].fields[fieldKey] = {
                 fieldId: field.id,
                 type: mapQuickBaseType(field.type),
                 displayName: field.label,
-                friendlyName: friendlyFieldName,
+                friendlyName: fieldKey,
                 required: field.required || false,
                 readOnly: isReadOnlyField(field.type),
                 choices: field.properties?.choices
             };
         }
+        
+        console.log(`    - Discovered ${fields.length} fields`);
+    
     }
 
     console.log(`   App: ${appConfig.displayName} (${appConfig.appId})`);
@@ -473,15 +481,14 @@ async function getTables(config: DiscoveryConfig): Promise<QuickBaseApiTable[]> 
 async function getTableFields(config: DiscoveryConfig, tableId: string): Promise<QuickBaseApiField[]> {
     const response = await makeQuickBaseRequest(config, `/fields?tableId=${tableId}`, 'GET');
     
-    return response
-        .filter((field: any) => !field.noWrap && field.fieldType !== 'summary')
-        .map((field: any) => ({
-            id: field.id,
-            label: field.label,
-            type: field.fieldType || 'text',
-            required: field.required || false,
-            properties: field.properties || null
-        }));
+    // Include ALL fields - no filtering. Summary/formula fields are marked read-only by isReadOnlyField()
+    return response.map((field: any) => ({
+        id: field.id,
+        label: field.label,
+        type: field.fieldType || 'text',
+        required: field.required || false,
+        properties: field.properties || null
+    }));
 }
 
 async function makeQuickBaseRequest(config: DiscoveryConfig, endpoint: string, method: string): Promise<any> {
